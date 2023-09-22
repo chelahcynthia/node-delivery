@@ -1,6 +1,5 @@
 module.exports = {
-    mongoURI:"mongodb+srv://cchelangat989:2379@cluster0.ypi9tws.mongodb.net/?retryWrites=true&w=majority",
+    mongoURI: "mongodb://localhost:27017/test",
     secretOrKey: "secret",
     userRoles: ["user", "manager"]
-
 };
