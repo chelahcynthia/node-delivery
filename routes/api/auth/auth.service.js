@@ -1,96 +1,75 @@
 const config = require("../../../config/keys");
 const jwt = require("jsonwebtoken");
-const expressJwt = require("express-jwt");
-const compose = require("composable-middleware");
 const User = require("../user/user.model");
-const validateJwt = expressJwt({ secret: config.secretOrKey });
 
 /**
- * Attaches the user object to the request if authenticated
- * Otherwise returns 403
+ * Middleware to verify and decode JWT tokens
  */
-function isAuthenticated() {
-  return (
-    compose()
-      // Validate jwt
-      .use(function(req, res, next) {
-        // allow access_token to be passed through query parameter as well
-        validateJwt(req, res, next);
-        if (req.query && req.query.hasOwnProperty("access_token")) {
-          req.headers.authorization = "Bearer " + req.query.access_token;
-        }
-      })
-      // Attach user to request
-      .use(function(req, res, next) {
-        User.findById(req.user.id, function(err, user) {
-          if (err) return next(err);
-          if (!user) return res.send(401);
+function verifyToken(req, res, next) {
+  // Get the token from the request headers or query parameters
+  const token = req.headers.authorization || req.query.access_token || "";
 
-          req.user = user;
-          next();
-        });
-      })
-  );
-}
+  // Check if the token exists
+  if (!token) {
+    return res.status(403).json({ message: "Token is missing" });
+  }
 
-/**
- * Checks if the user role meets the minimum requirements of the route
- */
-function hasRole(roleRequired) {
-  if (!roleRequired) throw new Error("Required role needs to be set");
+  // Verify and decode the token
+  jwt.verify(token, config.secretOrKey, (err, decoded) => {
+    if (err) {
+      return res.status(401).json({ message: "Token is invalid" });
+    }
 
-  return compose()
-    .use(isAuthenticated())
-    .use(function meetsRequirements(req, res, next) {
-      if (
-        config.userRoles.indexOf(req.user.role) >=
-        config.userRoles.indexOf(roleRequired)
-      ) {
-        next();
-      } else {
-        res.send(403);
-      }
-    });
-}
+    // Attach the decoded user data to the request
+    req.user = decoded;
 
-/**
- * Checks if current User is saved on local strategy
- */
-
-function isLocalStrategy() {
-  return compose().use(function(req, res, next) {
-    User.findById(req.params.id, function(err, user) {
-      if (!user) return res.send(401);
-
-      if (user.provider === "local") next();
-      else res.send(400, "Only can change password on local strategy");
-    });
+    // Continue to the next middleware or route
+    next();
   });
 }
 
 /**
- * Returns a jwt token signed by the app secret
+ * Middleware to check if the user is authenticated
  */
-function signToken(id) {
-  //return jwt.sign({ _id: id }, config.secretOrKey, { expiresInMinutes: 60*5 });
-  return jwt.sign({ _id: id }, config.secretOrKey);
+function isAuthenticated(req, res, next) {
+  // Check if the user is authenticated (i.e., if the token has been verified)
+  if (!req.user) {
+    return res.status(403).json({ message: "Unauthorized" });
+  }
+
+  // User is authenticated, continue to the next middleware or route
+  next();
 }
 
 /**
- * Set token cookie directly for oAuth strategies
+ * Middleware to check user roles
  */
-function setTokenCookie(req, res) {
-  if (!req.user)
-    return res.json(404, {
-      message: "Something went wrong, please try again."
-    });
-  const token = signToken(req.user._id);
-  res.cookie("token", JSON.stringify(token));
-  res.redirect("/");
+function hasRole(roleRequired) {
+  return (req, res, next) => {
+    // Check if the user is authenticated
+    if (!req.user) {
+      return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    // Check if the user's role meets the minimum requirements
+    if (config.userRoles.indexOf(req.user.role) >= config.userRoles.indexOf(roleRequired)) {
+      next();
+    } else {
+      res.status(403).json({ message: "Insufficient role permissions" });
+    }
+  };
 }
 
-exports.isAuthenticated = isAuthenticated;
-exports.hasRole = hasRole;
-exports.signToken = signToken;
-exports.setTokenCookie = setTokenCookie;
-exports.isLocalStrategy = isLocalStrategy;
+/**
+ * Example route using the middleware
+ */
+function exampleRoute(req, res) {
+  res.status(200).json({ message: "Authenticated route", user: req.user });
+}
+
+module.exports = {
+  verifyToken,
+  isAuthenticated,
+  hasRole,
+  exampleRoute,
+};
