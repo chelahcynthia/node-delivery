@@ -5,10 +5,14 @@ import { connect } from "react-redux";
 import { loginUser } from "../../actions/authActions";
 import classnames from classnames;
 
-function Login() {
-  return (
-    <div>Login</div>
-  )
+class Login extends Component {
+    constructor() {
+      super();
+      this.state = {
+        email: "",
+        password: "",
+        errors: {}
+      };
+    }
+    
 }
-
-export default Login
